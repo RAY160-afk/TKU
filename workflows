@@ -1,0 +1,57 @@
+name: iOS Build IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest
+
+      - name: Install dependencies
+        run: |
+          brew install wget
+
+      - name: Install provisioning profile
+        env:
+          PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/TKUBusApp.mobileprovision
+
+      - name: Install signing certificate
+        env:
+          CERT_BASE64: ${{ secrets.CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$CERT_BASE64" | base64 --decode > certificate.p12
+          security import certificate.p12 -P "$CERT_PASSWORD" -A
+
+      - name: Build archive
+        run: |
+          xcodebuild -project TKUBusApp.xcodeproj \
+            -scheme TKUBusApp \
+            -configuration Release \
+            -archivePath build/TKUBusApp.xcarchive \
+            archive
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/TKUBusApp.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist exportOptions.plist
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v3
+        with:
+          name: TKUBusApp-IPA
+          path: build/*.ipa
